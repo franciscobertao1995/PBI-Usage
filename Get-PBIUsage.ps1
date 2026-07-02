@@ -218,9 +218,131 @@ if (-not $haveImportExcel) {
 
 if ($haveImportExcel) {
     Import-Module ImportExcel
-    if (Test-Path $OutputPath) { Remove-Item $OutputPath -Force }
-    $flat | Export-Excel -Path $OutputPath -WorksheetName 'PBIUsage' -AutoSize -AutoFilter -FreezeTopRow -BoldTopRow
-    Write-Host "Exported $($flat.Count) rows to $OutputPath" -ForegroundColor Green
+
+    # If the target workbook is open/locked (e.g. in Excel), remove it; on
+    # failure fall back to a timestamped file so the run still succeeds.
+    if (Test-Path $OutputPath) {
+        try {
+            Remove-Item $OutputPath -Force -ErrorAction Stop
+        } catch {
+            $alt = [System.IO.Path]::Combine(
+                (Split-Path -Parent $OutputPath),
+                ('{0}_{1}{2}' -f [System.IO.Path]::GetFileNameWithoutExtension($OutputPath),
+                    (Get-Date -Format 'yyyyMMdd_HHmmss'),
+                    [System.IO.Path]::GetExtension($OutputPath)))
+            Write-Warning "'$OutputPath' is locked (open in Excel?). Writing to '$alt' instead."
+            $OutputPath = $alt
+        }
+    }
+
+    $titleColor = [System.Drawing.Color]::FromArgb(31, 78, 120)   # dark blue
+    $barColor   = [System.Drawing.Color]::FromArgb(0, 112, 192)   # medium blue
+
+    # Merge + colour the title cell into a full-width banner.
+    function Set-TitleBar {
+        param($Worksheet, [int] $LastCol)
+        $cells = $Worksheet.Cells[1, 1, 1, $LastCol]
+        $cells.Merge = $true
+        $cells.Style.Fill.PatternType = [OfficeOpenXml.Style.ExcelFillStyle]::Solid
+        $cells.Style.Fill.BackgroundColor.SetColor($titleColor)
+        $cells.Style.Font.Color.SetColor([System.Drawing.Color]::White)
+        $cells.Style.VerticalAlignment = [OfficeOpenXml.Style.ExcelVerticalAlignment]::Center
+        $Worksheet.Row(1).Height = 24
+        # Freeze the title (row 1) and header (row 2) so the table header stays visible.
+        $Worksheet.View.FreezePanes(3, 1)
+    }
+
+    # --- Aggregations ------------------------------------------------------
+    $getUsersFor = {
+        param($ActivityName)
+        @($flat |
+            Where-Object { $_.Activity -eq $ActivityName -and $_.UserId } |
+            Select-Object -ExpandProperty UserId |
+            Sort-Object -Unique)
+    }
+    $createReportUsers = & $getUsersFor 'CreateReport'
+    $viewReportUsers   = & $getUsersFor 'ViewReport'
+
+    $activityBreakdown = $flat |
+        Group-Object Activity |
+        Sort-Object Count -Descending |
+        ForEach-Object {
+            [PSCustomObject]@{
+                Activity       = $_.Name
+                'Event Count'  = $_.Count
+                'Unique Users' = @($_.Group | Where-Object UserId |
+                                    Select-Object -ExpandProperty UserId -Unique).Count
+            }
+        }
+
+    $uniqueUsers = @($flat | Where-Object UserId |
+                        Select-Object -ExpandProperty UserId -Unique).Count
+
+    $overview = @(
+        [PSCustomObject]@{ Metric = 'Report generated (local time)'; Value = (Get-Date).ToString('yyyy-MM-dd HH:mm') }
+        [PSCustomObject]@{ Metric = 'Date range (UTC)';              Value = ('{0:yyyy-MM-dd}  to  {1:yyyy-MM-dd}' -f $rangeStart, $rangeEnd) }
+        [PSCustomObject]@{ Metric = 'Days collected';               Value = $dayList.Count }
+        [PSCustomObject]@{ Metric = 'Total events';                 Value = $flat.Count }
+        [PSCustomObject]@{ Metric = 'Unique users';                 Value = $uniqueUsers }
+        [PSCustomObject]@{ Metric = 'Distinct activities';          Value = $activityBreakdown.Count }
+        [PSCustomObject]@{ Metric = 'Users who created reports (CreateReport)'; Value = $createReportUsers.Count }
+        [PSCustomObject]@{ Metric = 'Users who viewed reports (ViewReport)';    Value = $viewReportUsers.Count }
+    )
+
+    # --- 1) Overview -------------------------------------------------------
+    $pkg = $overview | Export-Excel -Path $OutputPath -WorksheetName 'Overview' -PassThru `
+        -Title 'Power BI Usage Report - Overview' -TitleBold -TitleSize 14 `
+        -TableName 'tblOverview' -TableStyle Medium2 -AutoSize
+    Set-TitleBar $pkg.Workbook.Worksheets['Overview'] 2
+
+    # --- 2) Activity Breakdown (table + data bars + chart) -----------------
+    $n = $activityBreakdown.Count
+    $activityBreakdown | Export-Excel -ExcelPackage $pkg -WorksheetName 'Activity Breakdown' `
+        -Title 'Activity Breakdown' -TitleBold -TitleSize 14 `
+        -TableName 'tblActivity' -TableStyle Medium2 -AutoSize -PassThru | Out-Null
+    $wsAct = $pkg.Workbook.Worksheets['Activity Breakdown']
+    Set-TitleBar $wsAct 3
+    Add-ConditionalFormatting -Worksheet $wsAct -Range "B3:B$(2 + $n)" -DataBarColor $barColor
+    Add-ConditionalFormatting -Worksheet $wsAct -Range "C3:C$(2 + $n)" -DataBarColor $barColor
+    try {
+        Add-ExcelChart -Worksheet $wsAct -ChartType ColumnClustered -Title 'Events by Activity' `
+            -XRange "'Activity Breakdown'!A3:A$(2 + $n)" -YRange "'Activity Breakdown'!B3:B$(2 + $n)" `
+            -Width 640 -Height 340 -Row 1 -Column 4
+    } catch {
+        Write-Warning "Chart skipped: $($_.Exception.Message)"
+    }
+
+    # --- 3) CreateReport Users --------------------------------------------
+    $crRows = if ($createReportUsers.Count) {
+        $createReportUsers | ForEach-Object { [PSCustomObject]@{ 'User (UPN)' = $_ } }
+    } else {
+        , [PSCustomObject]@{ 'User (UPN)' = '(no CreateReport activity found)' }
+    }
+    $crRows | Export-Excel -ExcelPackage $pkg -WorksheetName 'CreateReport Users' `
+        -Title "Users who created reports ($($createReportUsers.Count))" -TitleBold -TitleSize 14 `
+        -TableName 'tblCreateReport' -TableStyle Medium2 -AutoSize -PassThru | Out-Null
+    Set-TitleBar $pkg.Workbook.Worksheets['CreateReport Users'] 1
+
+    # --- 4) ViewReport Users ----------------------------------------------
+    $vrRows = if ($viewReportUsers.Count) {
+        $viewReportUsers | ForEach-Object { [PSCustomObject]@{ 'User (UPN)' = $_ } }
+    } else {
+        , [PSCustomObject]@{ 'User (UPN)' = '(no ViewReport activity found)' }
+    }
+    $vrRows | Export-Excel -ExcelPackage $pkg -WorksheetName 'ViewReport Users' `
+        -Title "Users who viewed reports ($($viewReportUsers.Count))" -TitleBold -TitleSize 14 `
+        -TableName 'tblViewReport' -TableStyle Medium2 -AutoSize -PassThru | Out-Null
+    Set-TitleBar $pkg.Workbook.Worksheets['ViewReport Users'] 1
+
+    # --- 5) PBIUsage (raw detail) -----------------------------------------
+    $flat | Export-Excel -ExcelPackage $pkg -WorksheetName 'PBIUsage' `
+        -TableName 'tblPBIUsage' -TableStyle Medium2 -AutoSize -BoldTopRow -PassThru | Out-Null
+    $pkg.Workbook.Worksheets['PBIUsage'].View.FreezePanes(2, 1)
+
+    Close-ExcelPackage $pkg
+    Write-Host "Exported workbook: $OutputPath" -ForegroundColor Green
+    Write-Host ("  Sheets: Overview | Activity Breakdown | CreateReport Users ({0}) | ViewReport Users ({1}) | PBIUsage ({2} rows)" -f `
+        $createReportUsers.Count, $viewReportUsers.Count, $flat.Count) -ForegroundColor Green
 } else {
     $csv = [System.IO.Path]::ChangeExtension($OutputPath, '.csv')
     $flat | Export-Csv -Path $csv -NoTypeInformation -Encoding UTF8
