@@ -15,7 +15,7 @@
       to PBIUsage.xlsx in the script's folder (one row per event).
 
 .PARAMETER Days
-    Number of days back from today (UTC) to collect. Default: 7.
+    Number of days back from today (UTC) to collect. Default: 28.
     The service retains roughly the last 30 days. Ignored if -LastMonth or
     -StartDate/-EndDate are supplied.
 
@@ -55,7 +55,7 @@
 
 [CmdletBinding()]
 param(
-    [int]      $Days       = 7,
+    [int]      $Days       = 28,
     [switch]   $LastMonth,
     [datetime] $StartDate,
     [datetime] $EndDate,
