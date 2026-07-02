@@ -15,7 +15,7 @@
       to PBIUsage.xlsx in the script's folder (one row per event).
 
 .PARAMETER Days
-    Number of days back from today (UTC) to collect. Default: 28.
+    Number of days back from today (UTC) to collect. Default: 27.
     The service retains roughly the last 30 days. Ignored if -LastMonth or
     -StartDate/-EndDate are supplied.
 
@@ -55,7 +55,7 @@
 
 [CmdletBinding()]
 param(
-    [int]      $Days       = 28,
+    [int]      $Days       = 27,
     [switch]   $LastMonth,
     [datetime] $StartDate,
     [datetime] $EndDate,
@@ -100,7 +100,13 @@ function Get-PbiAccessToken {
     # Interactive / DeviceCode -> MSAL.PS
     if (-not (Get-Module -ListAvailable -Name MSAL.PS)) {
         Write-Host 'Installing MSAL.PS module (CurrentUser)...' -ForegroundColor Cyan
-        Install-Module MSAL.PS -Scope CurrentUser -Force -AllowClobber -AcceptLicense
+        $installArgs = @{ Name = 'MSAL.PS'; Scope = 'CurrentUser'; Force = $true; AllowClobber = $true }
+        # -AcceptLicense only exists in PowerShellGet 1.6.0+ (Windows PowerShell 5.1
+        # ships with 1.0.0.1, which lacks it). Add it only when supported.
+        if ((Get-Command Install-Module).Parameters.ContainsKey('AcceptLicense')) {
+            $installArgs['AcceptLicense'] = $true
+        }
+        Install-Module @installArgs
     }
     Import-Module MSAL.PS
 

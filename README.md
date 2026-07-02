@@ -66,7 +66,7 @@ operation.
 ## Usage
 
 ```powershell
-# Default: last 28 days -> PBIUsage.xlsx in the script folder, interactive browser sign-in
+# Default: last 27 days -> PBIUsage.xlsx in the script folder, interactive browser sign-in
 .\Get-PBIUsage.ps1
 
 # Entire previous calendar month
@@ -89,7 +89,7 @@ operation.
 
 | Parameter | Default | Description |
 |---|---|---|
-| `-Days` | `28` | Days back from today (UTC). Ignored if `-LastMonth` or `-StartDate` is used. |
+| `-Days` | `27` | Days back from today (UTC). Ignored if `-LastMonth` or `-StartDate` is used. |
 | `-LastMonth` | — | Collect the entire previous calendar month (UTC). |
 | `-StartDate` / `-EndDate` | — | Explicit UTC date range (inclusive). |
 | `-OutputPath` | `PBIUsage.xlsx` (script folder) | Target Excel file. |
