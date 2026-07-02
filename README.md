@@ -23,8 +23,29 @@ Admin portal or a full monitoring solution.
    (the API only accepts a start/end within the same UTC day).
 3. **Follows pagination** (`continuationUri`) until every page is retrieved.
 4. **Flattens** each event (nested objects are JSON-stringified) into one row.
-5. **Exports** everything to `PBIUsage.xlsx` in the script's folder (worksheet `PBIUsage`,
-   with autofilter, frozen header, and bold header row).
+5. **Exports** everything to `PBIUsage.xlsx` in the script's folder as a multi-sheet,
+   styled workbook (Overview dashboard, activity breakdown with a chart, per-activity
+   user lists, and the full raw detail). See [Output workbook](#output-workbook) below.
+
+## Output workbook
+
+The script writes a single `.xlsx` with **five worksheets**, ordered from summary to
+detail. Every sheet uses a coloured title banner, an Excel table (banded rows + filter
+dropdowns), auto-sized columns, and frozen headers so they stay visible while scrolling.
+
+| Sheet | Contents |
+|---|---|
+| **Overview** | A dashboard of key metrics: report generation time, date range (UTC), days collected, total events, unique users, distinct activities, and the counts of users who created and viewed reports. |
+| **Activity Breakdown** | One row per `Activity` with its **event count** and **unique-user count**, sorted by frequency. Includes in-cell data bars and an *Events by Activity* column chart for a quick visual read. |
+| **CreateReport Users** | The unique list of `UserId` (UPN) values that performed a `CreateReport` activity in the window. |
+| **ViewReport Users** | The unique list of `UserId` (UPN) values that performed a `ViewReport` activity in the window. |
+| **PBIUsage** | The full raw detail — **one row per audit event**, columns being the union of all fields seen across events (typically ~50+ columns such as `Id`, `CreationTime`, `Operation`, `Activity`, `UserId`, `WorkspaceId`, `WorkSpaceName`, `ObjectType`, `ObjectDisplayName`, `ResultStatus`, `CapacityName`, etc.). Fields not relevant to a given event are left blank. |
+
+> If the target file is **open in Excel** (locked), the script writes to a timestamped
+> copy (e.g. `PBIUsage_20260702_141530.xlsx`) instead of failing.
+>
+> If the `ImportExcel` module cannot be installed, the script falls back to writing a
+> `.csv` (raw detail only) next to the requested output path.
 
 ## API used
 
@@ -101,22 +122,19 @@ operation.
 
 - A sign-in prompt (unless you pass `-AccessToken` or reuse an `az` session).
 - Console progress, one line per UTC day fetched, then a total event count.
-- An Excel file at the output path — **one row per audit event**, columns being the
-  **union of all fields** seen across the events (typically ~50+ columns such as
-  `Id`, `CreationTime`, `Operation`, `Activity`, `UserId`, `WorkspaceId`,
-  `WorkSpaceName`, `ObjectType`, `ObjectDisplayName`, `ResultStatus`, `CapacityName`,
-  etc.). Fields not relevant to a given event are left blank.
+- A styled Excel workbook at the output path with the five worksheets described in
+  [Output workbook](#output-workbook) above.
 
 Example console output:
 
 ```
 Authenticated.
-Collecting 30 day(s): 2026-06-01 to 2026-06-30 (UTC)
-Fetching 2026-06-01 ...
-WARNING:   Day 2026-06-01 (page 0) failed: 400 (Bad Request).   # beyond 30-day retention
+Collecting 27 day(s): 2026-06-05 to 2026-07-01 (UTC)
+Fetching 2026-06-05 ...
 ...
-Collected 1635 event(s).
-Exported 1635 rows to C:\temp\PBI-Usage\PBIUsage.xlsx
+Collected 1832 event(s).
+Exported workbook: C:\temp\PBI-Usage\PBIUsage.xlsx
+  Sheets: Overview | Activity Breakdown | CreateReport Users (1) | ViewReport Users (1) | PBIUsage (1832 rows)
 ```
 
 > If the `ImportExcel` module cannot be installed, the script falls back to writing a
