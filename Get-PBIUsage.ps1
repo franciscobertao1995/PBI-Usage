@@ -59,7 +59,7 @@ param(
     [switch]   $LastMonth,
     [datetime] $StartDate,
     [datetime] $EndDate,
-    [string]   $OutputPath = (Join-Path $PSScriptRoot 'PBIUsage.xlsx'),
+    [string]   $OutputPath,
     [ValidateSet('Interactive','DeviceCode','AzureCli')]
     [string] $AuthMode   = 'Interactive',
     [string] $TenantId   = 'organizations',
@@ -67,6 +67,16 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+# Resolve the default output path. $PSScriptRoot can be empty depending on how the
+# script is invoked, so fall back to the script file's folder, then the current dir.
+if (-not $OutputPath) {
+    $scriptDir = $PSScriptRoot
+    if (-not $scriptDir -and $PSCommandPath) { $scriptDir = Split-Path -Parent $PSCommandPath }
+    if (-not $scriptDir) { $scriptDir = (Get-Location).Path }
+    $OutputPath = Join-Path $scriptDir 'PBIUsage.xlsx'
+}
+
 $resource = 'https://analysis.windows.net/powerbi/api'
 $apiBase  = 'https://api.powerbi.com/v1.0/myorg/admin/activityevents'
 # Well-known Microsoft public client (Azure PowerShell) usable for interactive/device-code sign-in.
