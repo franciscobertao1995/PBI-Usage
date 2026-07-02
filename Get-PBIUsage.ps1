@@ -99,7 +99,14 @@ function Get-PbiAccessToken {
         $result = Get-MsalToken -ClientId $ClientId -TenantId $Tenant -Scopes $Scopes -DeviceCode
     } else {
         Write-Host 'Opening interactive browser sign-in...' -ForegroundColor Cyan
-        $result = Get-MsalToken -ClientId $ClientId -TenantId $Tenant -Scopes $Scopes -Interactive
+        # Use the default system browser (loopback redirect) instead of the embedded
+        # WebView2 control, which requires the WebView2 runtime and fails on many hosts.
+        try {
+            $result = Get-MsalToken -ClientId $ClientId -TenantId $Tenant -Scopes $Scopes -Interactive -UseEmbeddedWebView:$false -RedirectUri 'http://localhost'
+        } catch {
+            Write-Warning "System-browser sign-in failed ($($_.Exception.Message)); falling back to device code."
+            $result = Get-MsalToken -ClientId $ClientId -TenantId $Tenant -Scopes $Scopes -DeviceCode
+        }
     }
     return $result.AccessToken
 }

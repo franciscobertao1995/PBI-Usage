@@ -18,13 +18,13 @@ Admin portal or a full monitoring solution.
 
 ## What it does
 
-1. **Authenticates** interactively (browser), by device code, or via Azure CLI.
+1. **Authenticates** interactively (system browser), by device code, or via Azure CLI.
 2. **Calls the Power BI Admin "Get Activity Events" REST API** one UTC day at a time
    (the API only accepts a start/end within the same UTC day).
 3. **Follows pagination** (`continuationUri`) until every page is retrieved.
 4. **Flattens** each event (nested objects are JSON-stringified) into one row.
-5. **Exports** everything to `C:\temp\PBIUsage.xlsx` (worksheet `PBIUsage`, with
-   autofilter, frozen header, and bold header row).
+5. **Exports** everything to `PBIUsage.xlsx` in the script's folder (worksheet `PBIUsage`,
+   with autofilter, frozen header, and bold header row).
 
 ## API used
 
@@ -59,10 +59,14 @@ operation.
   - [`MSAL.PS`](https://www.powershellgallery.com/packages/MSAL.PS) — interactive / device-code sign-in.
 - For `-AuthMode AzureCli`: the [Azure CLI](https://learn.microsoft.com/cli/azure/) (`az`).
 
+> **Interactive sign-in** opens your **default system browser** (using an
+> `http://localhost` loopback redirect), so the WebView2 runtime is **not** required.
+> If the browser sign-in can't start, the script automatically falls back to device-code.
+
 ## Usage
 
 ```powershell
-# Default: last 7 days -> C:\temp\PBIUsage.xlsx, interactive browser sign-in
+# Default: last 7 days -> PBIUsage.xlsx in the script folder, interactive browser sign-in
 .\Get-PBIUsage.ps1
 
 # Entire previous calendar month
@@ -88,8 +92,8 @@ operation.
 | `-Days` | `7` | Days back from today (UTC). Ignored if `-LastMonth` or `-StartDate` is used. |
 | `-LastMonth` | — | Collect the entire previous calendar month (UTC). |
 | `-StartDate` / `-EndDate` | — | Explicit UTC date range (inclusive). |
-| `-OutputPath` | `C:\temp\PBIUsage.xlsx` | Target Excel file. |
-| `-AuthMode` | `Interactive` | `Interactive`, `DeviceCode`, or `AzureCli`. |
+| `-OutputPath` | `PBIUsage.xlsx` (script folder) | Target Excel file. |
+| `-AuthMode` | `Interactive` | `Interactive` (system browser), `DeviceCode`, or `AzureCli`. |
 | `-TenantId` | `organizations` | Tenant GUID or domain to sign in against. |
 | `-AccessToken` | — | Bypass sign-in with a pre-acquired bearer token. |
 
@@ -112,7 +116,7 @@ Fetching 2026-06-01 ...
 WARNING:   Day 2026-06-01 (page 0) failed: 400 (Bad Request).   # beyond 30-day retention
 ...
 Collected 1635 event(s).
-Exported 1635 rows to C:\temp\PBIUsage.xlsx
+Exported 1635 rows to C:\temp\PBI-Usage\PBIUsage.xlsx
 ```
 
 > If the `ImportExcel` module cannot be installed, the script falls back to writing a

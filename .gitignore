@@ -1,0 +1,5 @@
+# Excel files
+*.xlsx
+*.xlsm
+*.xls
+*.xlsb
